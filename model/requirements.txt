@@ -11,3 +11,4 @@ pytesseract
 pillow
 numpy
 transformers
+flask-cors
