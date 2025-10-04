@@ -10,6 +10,8 @@ export default function ChatApp() {
   const [modalVisible, setModalVisible] = useState(false);
   const [modalTitle, setModalTitle] = useState('');
   const [modalContent, setModalContent] = useState('');
+  const [imageModalVisible, setImageModalVisible] = useState(false);
+  const [imageModalSrc, setImageModalSrc] = useState('');
   
   const fileUploadInputRef = useRef(null);
   const chatMessagesRef = useRef(null);
@@ -237,6 +239,8 @@ export default function ChatApp() {
       return { icon: 'description', color: 'text-blue-500' };
     } else if (['.mp3', '.wav', '.m4a'].some(ext => lowerFilename.endsWith(ext))) {
       return { icon: 'audiotrack', color: 'text-orange-500' };
+    } else if (['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'].some(ext => lowerFilename.endsWith(ext))) {
+      return { icon: 'image', color: 'text-green-500' };
     }
     return { icon: 'article', color: 'text-gray-500' };
   };
@@ -265,6 +269,9 @@ export default function ChatApp() {
           audioPlayerRef.current.play();
         }
       }, 100);
+    } else if (src.type === 'standalone_image' || src.type === 'image') {
+      setImageModalSrc(`../model/temp/${src.image_path}`);
+      setImageModalVisible(true);
     }
   };
 
@@ -377,16 +384,20 @@ export default function ChatApp() {
                 </div>
               ) : (
                 <div className="max-w-[80%] self-start bg-surface-light dark:bg-surface-dark text-text-light dark:text-text-dark px-4 py-2 rounded-2xl shadow-sm prose dark:prose-invert prose-sm mb-4 flex flex-col">
-                  {message.sources && message.sources.some(src => src.type === 'image') && (
+                  {message.sources && message.sources.some(src => src.type === 'image' || src.type === 'standalone_image') && (
                     <div>
-                      {message.sources.filter(src => src.type === 'image').map((src, idx) => (
+                      {message.sources.filter(src => src.type === 'image' || src.type === 'standalone_image').map((src, idx) => (
                         <div key={idx}>
                           <hr />
                           <img
                             src={`../model/temp/${src.image_path}`}
                             alt={src.image_path}
-                            className="my-2 max-w-full h-auto rounded-lg border border-border-light dark:border-border-dark object-contain"
+                            className="my-2 max-w-full h-auto rounded-lg border border-border-light dark:border-border-dark object-contain cursor-pointer hover:opacity-80 transition-opacity"
                             style={{ maxHeight: '300px' }}
+                            onClick={() => {
+                              setImageModalSrc(`../model/temp/${src.image_path}`);
+                              setImageModalVisible(true);
+                            }}
                           />
                         </div>
                       ))}
@@ -432,6 +443,19 @@ export default function ChatApp() {
                             >
                               <span className="material-icons text-sm">audiotrack</span>
                               {formatTime(src.start_time)} - {formatTime(src.end_time)}
+                            </a>
+                          );
+                        } else if (src.type === 'standalone_image' || src.type === 'image') {
+                          return (
+                            <a
+                              key={idx}
+                              href="javascript:void(0)"
+                              onClick={() => handleSourceClick(src)}
+                              title={src.source_filename}
+                              className="px-2 py-1 bg-gray-200 rounded-md text-gray-600 text-xs no-underline hover:bg-gray-300 transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              <span className="material-icons text-sm">image</span>
+                              {src.type === 'standalone_image' ? 'Image' : `p.${src.page_num}`}
                             </a>
                           );
                         }
@@ -492,7 +516,7 @@ export default function ChatApp() {
                     type="file"
                     id="file-upload"
                     ref={fileUploadInputRef}
-                    accept=".pdf,.docx,.mp3,.wav,.m4a"
+                    accept=".pdf,.docx,.mp3,.wav,.m4a,.jpg,.jpeg,.png,.gif,.bmp,.webp"
                     className="hidden"
                     multiple
                     onChange={handleFileUpload}
@@ -557,6 +581,28 @@ export default function ChatApp() {
               id="modal-content"
               className="prose dark:prose-invert p-4 overflow-y-auto"
               dangerouslySetInnerHTML={{ __html: modalContent }}
+            />
+          </div>
+        </div>
+      )}
+
+      {imageModalVisible && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center p-4 z-50"
+          onClick={() => setImageModalVisible(false)}
+        >
+          <div className="relative max-w-[90vw] max-h-[90vh]">
+            <button
+              onClick={() => setImageModalVisible(false)}
+              className="absolute top-2 right-2 bg-white text-black rounded-full w-8 h-8 flex items-center justify-center font-bold text-xl hover:bg-gray-200 transition-colors z-10"
+            >
+              &times;
+            </button>
+            <img
+              src={imageModalSrc}
+              alt="Full size"
+              className="max-w-full max-h-[90vh] object-contain rounded-lg"
+              onClick={(e) => e.stopPropagation()}
             />
           </div>
         </div>

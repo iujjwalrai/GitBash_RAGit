@@ -23,6 +23,7 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 from transformers import BlipProcessor, BlipForConditionalGeneration
 from werkzeug.utils import secure_filename
+
 # --- App Initialization ---
 app = Flask(__name__, static_folder='temp', static_url_path='/temp')
 
@@ -49,7 +50,24 @@ _reranker = None
 _whisper_model = None
 _ex_llm = None
 _llm = None
+_vision_llm = None
 _model_lock = threading.Lock()
+
+_blip_processor = None
+_blip_model = None
+
+def get_blip_model():
+    global _blip_processor, _blip_model
+    if _blip_model is None:
+        with _model_lock:
+            if _blip_model is None:
+                from transformers import BlipProcessor, BlipForConditionalGeneration
+                _blip_processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-large")
+                _blip_model = BlipForConditionalGeneration.from_pretrained(
+                    "Salesforce/blip-image-captioning-large"
+                ).to("cpu")
+    return _blip_processor, _blip_model
+
 
 def get_embedding_model():
     global _embedding_model
@@ -91,15 +109,21 @@ def get_ex_llm():
                 _ex_llm = ChatOllama(model="gemma3:1b")
     return _ex_llm
 
+def get_vision_llm():
+    global _vision_llm
+    if _vision_llm is None:
+        with _model_lock:
+            if _vision_llm is None:
+                _vision_llm = ChatOllama(model="gemma3:4b")
+    return _vision_llm
+
 executor = ThreadPoolExecutor(max_workers=4)
 
 # --- Processing Functions ---
 
-def describe_image_with_vision_model(image_path):
+def describe_image_with_vision_model(image_path, context_before="", context_after=""):
     try:
-        print("Reading Image...")
-        processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-large")
-        model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-large")
+        processor, model = get_blip_model()
         image = Image.open(image_path).convert("RGB")
         inputs = processor(image, return_tensors="pt")
 
@@ -115,10 +139,62 @@ def describe_image_with_vision_model(image_path):
         for out in outputs:
             caption += processor.decode(out, skip_special_tokens=True) + " "
         print(caption)
+        image_caption_llm = get_ex_llm()
+        caption_prompt = ChatPromptTemplate.from_template(f"""Based on the following caption and surrounding text context,\n                                    
+        Context Before Image: [{context_before}]\n
+        Caption: [{caption}]\n
+        Context After Image: [{context_after}]\n
+        Provide a concise and relevant description of the image in three sentences.
+        what can be the type of image [graph, chart, diagram, potrait or photograph] 
+        If potrait/photograph who can be in the image what could be the name.""")
+        caption_chain = caption_prompt | image_caption_llm | StrOutputParser()
+        caption = caption_chain.invoke({})
+        caption = f"Image Description: [{caption.strip()}]"
+        print(caption)
         return caption
     except Exception as e:
         print(f"Vision model description failed: {e}")
         return "Unable to generate detailed image description."
+
+
+
+def process_standalone_image(file_storage):
+    """Processes standalone uploaded images using BLIP for descriptions."""
+    try:
+        os.makedirs("temp", exist_ok=True)
+        
+        # Save image to temp folder
+        img_filename = secure_filename(file_storage.filename)
+        img_path = os.path.join("temp", img_filename)
+        file_storage.save(img_path)
+        
+        # Open and validate image
+        pil_image = Image.open(img_path).convert("RGB")
+        
+        # Get vision description using BLIP
+        vision_description = describe_image_with_vision_model(img_path)
+        
+        # OCR for any text in the image
+        ocr_text = ""
+        if pil_image.width > 50 and pil_image.height > 50:
+            ocr_text = pytesseract.image_to_string(pil_image)
+        
+        # Create rich document for the standalone image
+        image_doc_text = f"""Standalone Image: {img_filename}
+Vision Description: {vision_description}
+OCR Text: {ocr_text.strip()}""".strip()
+        
+        return [{
+            "text": image_doc_text,
+            "image_path": img_filename,
+            "source_filename": img_filename,
+            "type": "standalone_image",
+            "page_num": 1
+        }]
+        
+    except Exception as e:
+        print(f"Error processing standalone image {file_storage.filename}: {e}")
+        return []
 
 
 def process_pdf(file_storage):
@@ -159,14 +235,9 @@ def process_pdf(file_storage):
                 img_path = os.path.join("temp", img_filename)
                 pil_image.save(img_path)
 
-                # OCR for text extraction
-                ocr_text = ""
-                if pil_image.width > 50 and pil_image.height > 50:
-                    ocr_text = pytesseract.image_to_string(pil_image)
-
+                ocr_text = pytesseract.image_to_string(pil_image)
                 vision_description = describe_image_with_vision_model(img_path)
                 
-                # Create rich image document
                 image_doc_text = f"""Image from page {page_num + 1} of {file_storage.filename}
 Vision Description: {vision_description}
 OCR Text: {ocr_text.strip()}""".strip()
@@ -192,6 +263,7 @@ OCR Text: {ocr_text.strip()}""".strip()
 
     doc.close()
     return processed_data
+
 
 def process_docx(file_storage):
     """Processes a DOCX file by extracting content in proper sequence (text and images)."""
@@ -349,6 +421,7 @@ OCR Text: {ocr_text.strip()}""".strip()
             })
     
     return doc_data
+
 def process_audio(file_storage):
     # Ensure temp folder exists and save the audio there (accessible via /temp/<filename>)
     os.makedirs("temp", exist_ok=True)
@@ -450,6 +523,7 @@ def process_audio(file_storage):
         })
 
     return chunk_data
+
 def create_vector_store_from_docs(documents):
     embedding_model = get_embedding_model()
     texts = [doc['text'] for doc in documents]
@@ -601,6 +675,8 @@ def upload_file():
                     docs = process_docx(file)
                 elif filename.endswith(('.mp3', '.wav', '.m4a', '.ogg')):
                     docs = process_audio(file)
+                elif filename.endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp')):
+                    docs = process_standalone_image(file)
                 else:
                     continue
                 
@@ -698,7 +774,7 @@ def ask_question():
 Context:
 {context}
 
-Your answer must be in HTML format, enclosed within a single <div> tag. Do not use markdown, backticks, or any styling. If the question asks to "show" an image, graph, chart, or diagram, 
+Your answer must be in HTML format, enclosed within a single <div> tag and use <b>, <h>, <br>, <i>, <ul><li> tags when needed. Do not use markdown, backticks. If the question asks to "show" an image, graph, chart, or diagram, 
 then you have to just one line caption it if available but don't use <img> tag for it. if there is nothing to show, just answer normally. If the context does not contain the answer, say "I couldn't find any relevant information in the uploaded documents to answer your question." Do not make up answers. Be concise.
 
 Question: {question}"""
@@ -706,11 +782,13 @@ Question: {question}"""
     prompt = ChatPromptTemplate.from_template(template)
     llm = get_llm()
     rag_chain = prompt | llm | StrOutputParser()
+    
     def generate():
         full_response = ""
         for chunk in rag_chain.stream({"context": context_text, "question": question}):
             full_response += chunk
             yield chunk
+        
         # ✨ Check if we should display images
         should_show_images = any(keyword in question.lower() for keyword in ['show', 'display', 'image', 'graph', 'chart', 'diagram', 'picture'])
         
@@ -723,7 +801,7 @@ Question: {question}"""
                 "type": doc.get('type', 'unknown'),
                 "score": float(score)
             }
-            if doc.get('type') == 'image': 
+            if doc.get('type') in ['image', 'standalone_image']: 
                 source_obj['image_path'] = doc['image_path']
                 source_obj['vision_description'] = doc.get('vision_description', '')
                 source_obj['show_inline'] = should_show_images
