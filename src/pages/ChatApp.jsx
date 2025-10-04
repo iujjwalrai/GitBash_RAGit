@@ -357,6 +357,28 @@ export default function ChatApp() {
           </div>
         </div>
       )}
+
+      {imageModalVisible && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center p-4 z-50"
+          onClick={() => setImageModalVisible(false)}
+        >
+          <div className="relative max-w-[90vw] max-h-[90vh]">
+            <button
+              onClick={() => setImageModalVisible(false)}
+              className="absolute top-2 right-2 bg-white text-black rounded-full w-8 h-8 flex items-center justify-center font-bold text-xl hover:bg-gray-200 transition-colors z-10"
+            >
+              &times;
+            </button>
+            <img
+              src={imageModalSrc}
+              alt="Full size"
+              className="max-w-full max-h-[90vh] object-contain rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
