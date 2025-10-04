@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { FiPaperclip, FiMic, FiSend, FiX, FiFile } from 'react-icons/fi';
+import { FaFilePdf, FaFileWord, FaMusic } from "react-icons/fa";
 
 export default function ChatApp() {
   const [uploadedFiles, setUploadedFiles] = useState([]);
@@ -10,7 +12,7 @@ export default function ChatApp() {
   const [modalVisible, setModalVisible] = useState(false);
   const [modalTitle, setModalTitle] = useState('');
   const [modalContent, setModalContent] = useState('');
-  
+
   const fileUploadInputRef = useRef(null);
   const chatMessagesRef = useRef(null);
   const audioPlayerRef = useRef(null);
@@ -20,71 +22,66 @@ export default function ChatApp() {
 
   const BASE = "http://localhost:5000";
 
-  useEffect(() => {
-    fetchFiles();
-  }, []);
 
   useEffect(() => {
+    // Auto-scroll to the latest message
     if (chatMessagesRef.current) {
       chatMessagesRef.current.scrollTop = chatMessagesRef.current.scrollHeight;
     }
   }, [messages]);
 
-  const fetchFiles = async () => {
-    try {
-      const res = await fetch('/files');
-      const data = await res.json();
-      setUploadedFiles(data.files || []);
-    } catch (e) {
-      console.error("Could not fetch files", e);
-    }
-  };
-
   const handleFileUpload = async (event) => {
     const files = event.target.files;
     if (!files.length) return;
-    
+
     const formData = new FormData();
-    const tempFiles = [];
-    
+    const tempFiles = Array.from(files).map(file => ({ name: file.name, uploading: true }));
+
     for (const file of files) {
       formData.append('files', file);
-      tempFiles.push({ name: file.name, uploading: true });
     }
-    
+
     setUploadedFiles(prev => [...prev, ...tempFiles]);
-    
+
     try {
       const response = await fetch(`${BASE}/upload`, { method: 'POST', body: formData });
       const data = await response.json();
-      
+
       if (response.ok) {
-        setUploadedFiles(prev => 
-          prev.map(file => 
-            data.filenames.includes(file.name) 
+        setUploadedFiles(prev =>
+          prev.map(file =>
+            data.filenames.includes(file.name)
               ? { ...file, uploading: false }
               : file
           )
         );
       } else {
-        setUploadedFiles(prev => 
-          prev.filter(file => !tempFiles.find(tf => tf.name === file.name))
-        );
-        alert(`Error uploading file: ${data.error}`);
+        throw new Error(data.error || 'File upload failed');
       }
     } catch (error) {
-      setUploadedFiles(prev => 
-        prev.filter(file => !tempFiles.find(tf => tf.name === file.name))
-      );
-      alert(`Network error: ${error.message}`);
+      alert(`Error: ${error.message}`);
+      setUploadedFiles(prev => prev.filter(f => !tempFiles.some(tf => tf.name === f.name)));
+    } finally {
+      if (fileUploadInputRef.current) {
+        fileUploadInputRef.current.value = '';
+      }
     }
-    
-    if (fileUploadInputRef.current) {
-      fileUploadInputRef.current.value = '';
+  };
+  
+  const handleRemoveFile = async (filename) => {
+    try {
+      const response = await fetch(`${BASE}/delete/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+      if (response.ok) {
+        setUploadedFiles(prev => prev.filter(f => f.name !== filename));
+      } else {
+        throw new Error('Failed to delete file');
+      }
+    } catch (error) {
+      alert(`Error: ${error.message}`);
     }
   };
 
-  const formatTime = (totalSeconds) => {
+  const formatTime = (totalSeconds = 0) => {
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = Math.floor(totalSeconds % 60);
     return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
@@ -93,86 +90,76 @@ export default function ChatApp() {
   const askQuestion = async () => {
     const question = questionInput.trim();
     if (!question) return;
-    
+
     setMessages(prev => [...prev, { sender: 'user', content: question }]);
     setQuestionInput('');
-    
-    const thinkingMessage = { sender: 'system', content: 'Thinking...', isStreaming: true };
-    setMessages(prev => [...prev, thinkingMessage]);
-    const messageIndex = messages.length + 1;
-    
+
+    const thinkingMessageIndex = messages.length + 1;
+    setMessages(prev => [...prev, { sender: 'system', content: 'Thinking...', isStreaming: true }]);
+
     try {
       const response = await fetch(`${BASE}/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question })
+        body: JSON.stringify({ question }),
       });
-      
-      if (!response.body) {
-        setMessages(prev => {
-          const newMessages = [...prev];
-          newMessages[messageIndex] = { sender: 'system', content: 'Streaming not supported!' };
-          return newMessages;
-        });
-        return;
-      }
-      
+
+      if (!response.body) throw new Error('Streaming response not available.');
+
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
       let streamedContent = '';
       let sources = [];
-      
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        
+
         buffer += decoder.decode(value, { stream: true });
-        const jsonMatch = buffer.match(/\{[\s\S]*\}$/);
         
+        // Check for a complete JSON object for sources at the end of the buffer
+        const jsonMatch = buffer.match(/(\{.*\})\s*$/);
         if (jsonMatch) {
-          try {
-            const parsed = JSON.parse(jsonMatch[0]);
-            if (parsed.type === "sources") {
-              sources = parsed.content;
-              buffer = buffer.replace(jsonMatch[0], "");
-            }
-          } catch (e) {
-            // incomplete JSON
-          }
+            try {
+                const parsed = JSON.parse(jsonMatch[0]);
+                if (parsed.type === "sources") {
+                    sources = parsed.content;
+                    // Remove the parsed JSON from the buffer
+                    buffer = buffer.substring(0, jsonMatch.index);
+                }
+            } catch (e) { /* Incomplete JSON, continue buffering */ }
         }
+
+        streamedContent = buffer.replace(/```html|```/g, "").trim();
         
-        const cleaned = buffer.replace(/```html/g, "").replace(/```/g, "").trim();
-        if (cleaned) {
-          streamedContent = cleaned;
-          setMessages(prev => {
+        setMessages(prev => {
             const newMessages = [...prev];
-            newMessages[messageIndex] = { 
-              sender: 'system', 
-              content: streamedContent,
-              sources: sources,
-              isStreaming: true 
+            newMessages[thinkingMessageIndex] = {
+                sender: 'system',
+                content: streamedContent,
+                sources: sources,
+                isStreaming: true,
             };
             return newMessages;
-          });
-        }
+        });
       }
       
       setMessages(prev => {
         const newMessages = [...prev];
-        newMessages[messageIndex] = { 
-          sender: 'system', 
-          content: streamedContent,
-          sources: sources,
-          isStreaming: false 
+        newMessages[thinkingMessageIndex] = {
+            sender: 'system',
+            content: streamedContent || "<p>I couldn't find an answer in the documents.</p>",
+            sources: sources,
+            isStreaming: false,
         };
         return newMessages;
-      });
-      
+    });
+
     } catch (error) {
       setMessages(prev => {
         const newMessages = [...prev];
-        newMessages[messageIndex] = { sender: 'system', content: `Error: ${error.message}` };
+        newMessages[thinkingMessageIndex] = { sender: 'system', content: `<p class="text-red-400">Error: ${error.message}</p>` };
         return newMessages;
       });
     }
@@ -180,350 +167,177 @@ export default function ChatApp() {
 
   const handleVoiceButton = async () => {
     if (isRecording) {
-      if (mediaRecorderRef.current) {
-        mediaRecorderRef.current.stop();
-      }
-      setIsRecording(false);
+      mediaRecorderRef.current?.stop();
     } else {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         streamRef.current = stream;
-        
-        const mediaRecorder = new MediaRecorder(stream);
-        mediaRecorderRef.current = mediaRecorder;
+        mediaRecorderRef.current = new MediaRecorder(stream);
         audioChunksRef.current = [];
+
+        mediaRecorderRef.current.ondataavailable = e => audioChunksRef.current.push(e.data);
         
-        mediaRecorder.addEventListener("dataavailable", e => {
-          audioChunksRef.current.push(e.data);
-        });
-        
-        mediaRecorder.addEventListener("stop", async () => {
+        mediaRecorderRef.current.onstop = async () => {
           const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
           const formData = new FormData();
           formData.append('audio', audioBlob, 'recording.wav');
-          
-          const res = await fetch(`${BASE}/transcribe`, { method: 'POST', body: formData });
-          const data = await res.json();
-          
-          if (res.ok) {
-            setQuestionInput(data.transcription);
-          } else {
-            alert(`Error: ${data.error}`);
+
+          try {
+            const res = await fetch(`${BASE}/transcribe`, { method: 'POST', body: formData });
+            const data = await res.json();
+            if (res.ok) {
+              setQuestionInput(prev => prev + data.transcription);
+            } else {
+              throw new Error(data.error || 'Transcription failed');
+            }
+          } catch (err) {
+            alert(`Error: ${err.message}`);
           }
-          
-          if (streamRef.current) {
-            streamRef.current.getTracks().forEach(track => track.stop());
-          }
-        });
+          stream.getTracks().forEach(track => track.stop());
+          setIsRecording(false);
+        };
         
-        mediaRecorder.start();
+        mediaRecorderRef.current.start();
         setIsRecording(true);
       } catch (error) {
-        alert(`Error accessing microphone: ${error.message}`);
+        alert(`Microphone access error: ${error.message}`);
       }
     }
   };
 
   const handleClearSession = async () => {
-    await fetch('/clear-session', { method: 'POST' });
+    await fetch(`${BASE}/clear-session`, { method: 'POST' });
     window.location.reload();
   };
 
   const getFileIcon = (filename) => {
-    const lowerFilename = filename.toLowerCase();
-    if (lowerFilename.endsWith('.pdf')) {
-      return { icon: 'picture_as_pdf', color: 'text-red-500' };
-    } else if (lowerFilename.endsWith('.docx')) {
-      return { icon: 'description', color: 'text-blue-500' };
-    } else if (['.mp3', '.wav', '.m4a'].some(ext => lowerFilename.endsWith(ext))) {
-      return { icon: 'audiotrack', color: 'text-orange-500' };
-    }
-    return { icon: 'article', color: 'text-gray-500' };
+    if (filename.endsWith('.pdf')) return <FaFilePdf className="text-blue-300" />;
+    if (filename.endsWith('.docx')) return <FaFileWord className="text-blue-300" />;
+    if (['.mp3', '.wav', '.m4a'].some(ext => filename.endsWith(ext))) return <FaMusic className="text-blue-300" />;
+    return <FiFile className="text-blue-300" />;
   };
 
   const handleSourceClick = (src) => {
-    console.log(src)
     if (src.type === 'pdf') {
-      window.open(`../model/temp/${src.source_filename}#page=${src.page_num}`, '_blank');
-    } else if (src.type === 'docx' || src.type === 'text') {
-      setModalTitle(`Source from: ${src.source_filename}`);
-      if (src.source_content && typeof src.source_content === 'string') {
-        setModalContent(src.source_content.replace(/\n/g, '<br>'));
-      } else {
-        setModalContent('<p class="text-gray-500"><em>No text content could be retrieved for this source.</em></p>');
-      }
-      setModalVisible(true);
+      window.open(`${BASE}/temp/${src.source_filename}#page=${src.page_num}`, '_blank');
     } else if (src.type === 'audio') {
+      setAudioSrc(`${BASE}/temp/${src.source_filename}`);
       setAudioPlayerVisible(true);
-      const currentSrc = audioPlayerRef.current?.currentSrc.split('/').pop();
-      if (decodeURIComponent(currentSrc || '') !== src.source_filename) {
-        setAudioSrc(`../model/temp/${src.source_filename}`);
-      }
       setTimeout(() => {
         if (audioPlayerRef.current) {
           audioPlayerRef.current.currentTime = src.start_time;
           audioPlayerRef.current.play();
         }
       }, 100);
+    } else {
+      setModalTitle(`Source: ${src.source_filename} (Chunk ${src.page_num})`);
+      setModalContent(src.source_content?.replace(/\n/g, '<br>') || '<p>No text content available for this source.</p>');
+      setModalVisible(true);
     }
   };
 
   return (
-    <div className="flex h-screen bg-background-light dark:bg-background-dark text-text-light dark:text-text-dark font-sans">
-      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-      <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
-      
-      <style>{`
-        .material-icons {
-          font-family: 'Material Icons';
-          font-weight: normal;
-          font-style: normal;
-          font-size: 24px;
-          line-height: 1;
-          letter-spacing: normal;
-          text-transform: none;
-          display: inline-block;
-          white-space: nowrap;
-          word-wrap: normal;
-          direction: ltr;
-          -webkit-font-smoothing: antialiased;
-        }
-        
-        .file-card {
-          display: flex;
-          align-items: center;
-          padding: 0.5rem;
-          border-radius: 0.5rem;
-          cursor: pointer;
-          gap: 0.5rem;
-          transition: background 0.3s, transform 0.3s, opacity 0.3s;
-        }
-        
-        .file-card:hover {
-          background-color: rgba(0, 0, 0, 0.05);
-          transform: translateY(-2px);
-        }
-        
-        .file-uploading {
-          position: relative;
-          opacity: 0.7;
-        }
-        
-        .file-uploading::after {
-          content: '';
-          position: absolute;
-          right: 0.5rem;
-          width: 1rem;
-          height: 1rem;
-          border: 2px solid #4f46e5;
-          border-top-color: transparent;
-          border-radius: 50%;
-          animation: spin 1s linear infinite;
-        }
-        
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
-
-      <aside className="w-72 bg-surface-light dark:bg-surface-dark flex flex-col p-4 border-r border-border-light dark:border-border-dark">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-xl font-bold">Chat</h1>
+    <div className="flex h-screen bg-gradient-to-br from-[#00111c] to-[#002137] text-gray-100 font-sans antialiased">
+      {/* Sidebar */}
+      <aside className="w-80 flex flex-col p-6 bg-[#001523]/80 backdrop-blur-md border-r border-[#002e4e]/50 shadow-lg">
+        <div className="mb-8">
+          <h1 className="text-2xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">GitBash RAGit</h1>
         </div>
-      
-        <nav className="flex-grow">
-          <div id="uploaded-files-display" className="mb-4">
-            <h2 className="text-xs text-subtext-light dark:text-subtext-dark uppercase font-bold mb-2">
-              Uploaded Files
-            </h2>
-            <ul id="uploaded-files-list">
-              {uploadedFiles.map((file, index) => {
-                const { icon, color } = getFileIcon(typeof file === 'string' ? file : file.name);
-                const filename = typeof file === 'string' ? file : file.name;
-                const uploading = typeof file === 'object' && file.uploading;
-                
-                return (
-                  <li
-                    key={index}
-                    data-filename={filename}
-                    className={`file-card ${uploading ? 'file-uploading' : ''}`}
-                  >
-                    <span className={`material-icons ${color}`}>{icon}</span>
-                    <span className="font-medium flex-1 truncate" title={filename}>
-                      {filename}
+        <div className="flex-grow flex flex-col min-h-0">
+          <h2 className="text-base font-semibold text-cyan-200 mb-4 tracking-wide">Uploaded Documents</h2>
+          <div className="flex-grow overflow-y-auto pr-3 -mr-3 space-y-3">
+            {uploadedFiles.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-cyan-400/60">
+                <FiFile size={48} className="mb-3 opacity-50" />
+                <p className="text-sm font-medium">No files uploaded yet.</p>
+              </div>
+            ) : (
+              <ul className="space-y-3">
+                {uploadedFiles.map((file, index) => (
+                  <li key={index} className="flex items-center gap-4 p-3 rounded-xl bg-[#002137]/50 backdrop-blur-sm hover:bg-[#002e4e]/50 transition-all duration-300 shadow-md">
+                    <span className="text-xl">{getFileIcon(file.name)}</span>
+                    <span className="font-medium text-sm truncate text-cyan-100" title={file.name}>
+                      {file.name}
                     </span>
+                    {file.uploading ? (
+                      <span className="ml-auto text-xs text-cyan-300 animate-pulse">Uploading...</span>
+                    ) : (
+                      <button onClick={() => handleRemoveFile(file.name)} className="ml-auto text-cyan-300/70 hover:text-red-400 transition-colors duration-300">
+                        <FiX size={16} />
+                      </button>
+                    )}
                   </li>
-                );
-              })}
-            </ul>
+                ))}
+              </ul>
+            )}
           </div>
-        </nav>
+        </div>
+        <div className="pt-6 mt-6 border-t border-[#002e4e]/50">
+          <button onClick={handleClearSession} className="w-full py-3 px-5 rounded-xl bg-red-600/20 text-red-300 hover:bg-red-600/30 transition-all duration-300 text-sm font-semibold shadow-inner">
+            Clear Session
+          </button>
+        </div>
       </aside>
 
-      <main className="flex-1 flex flex-col bg-background-light dark:bg-background-dark">
-        <header className="flex items-center justify-between p-4 border-b border-border-light dark:border-border-dark">
-          <h2 className="text-lg font-semibold">Multimodal RAG</h2>
-        </header>
-
-        <div id="chat-messages" ref={chatMessagesRef} className="flex-1 overflow-y-auto p-6">
+      {/* Main Chat Area */}
+      <main className="flex-1 flex flex-col overflow-hidden">
+        <div ref={chatMessagesRef} className="flex-1 overflow-y-auto p-8 space-y-6 bg-gradient-to-b from-transparent to-[#001523]/20">
           {messages.map((message, index) => (
-            <div key={index}>
-              {message.sender === 'user' ? (
-                <div className="mb-4 flex flex-col items-end">
-                  <div className="bg-black text-white p-3 rounded-lg max-w-[80%]">
-                    {message.content}
+            <div key={index} className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'} group`}>
+              <div className={`max-w-3xl p-5 rounded-2xl shadow-md transition-all duration-300 ${
+                message.sender === 'user'
+                  ? 'bg-gradient-to-r from-blue-600 to-blue-800 text-white rounded-br-none'
+                  : 'bg-[#002137]/80 backdrop-blur-md text-cyan-100 rounded-bl-none'
+              } ${message.isStreaming ? 'animate-pulse opacity-80' : ''}`}>
+                <div className="prose prose-sm prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: message.content }} />
+                {message.sources && message.sources.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {message.sources.map((src, srcIndex) => (
+                      <button key={srcIndex} onClick={() => handleSourceClick(src)} className="px-3 py-1 text-xs bg-cyan-900/30 rounded-full hover:bg-cyan-900/50 transition-colors text-cyan-200">
+                        {src.source_filename} {src.type === 'pdf' ? `(Page ${src.page_num})` : src.type === 'audio' ? `(${formatTime(src.start_time)})` : `(Chunk ${src.page_num})`}
+                      </button>
+                    ))}
                   </div>
-                </div>
-              ) : (
-                <div className="max-w-[80%] self-start bg-surface-light dark:bg-surface-dark text-text-light dark:text-text-dark px-4 py-2 rounded-2xl shadow-sm prose dark:prose-invert prose-sm mb-4 flex flex-col">
-                  {message.sources && message.sources.some(src => src.type === 'image') && (
-                    <div>
-                      {message.sources.filter(src => src.type === 'image').map((src, idx) => (
-                        <div key={idx}>
-                          <hr />
-                          <img
-                            src={`../model/temp/${src.image_path}`}
-                            alt={src.image_path}
-                            className="my-2 max-w-full h-auto rounded-lg border border-border-light dark:border-border-dark object-contain"
-                            style={{ maxHeight: '300px' }}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <div className="message-text" dangerouslySetInnerHTML={{ __html: message.content }} />
-                  {message.sources && message.sources.length > 0 && (
-                    <div className="flex justify-end gap-2 mt-2 flex-wrap">
-                      {message.sources.map((src, idx) => {
-                        if (src.type === 'pdf') {
-                          return (
-                            <a
-                              key={idx}
-                              href={`..model/temp/${src.source_filename}#page=${src.page_num}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="px-2 py-1 bg-gray-200 rounded-md text-gray-600 text-xs no-underline hover:bg-gray-300 transition-colors flex items-center gap-1 cursor-pointer"
-                            >
-                              <span className="material-icons text-sm">picture_as_pdf</span>
-                              PDF p.{src.page_num}
-                            </a>
-                          );
-                        } else if (src.type === 'docx' || src.type === 'text') {
-                          return (
-                            <a
-                              key={idx}
-                              href="javascript:void(0)"
-                              onClick={() => handleSourceClick(src)}
-                              className="px-2 py-1 bg-gray-200 rounded-md text-gray-600 text-xs no-underline hover:bg-gray-300 transition-colors flex items-center gap-1 cursor-pointer"
-                            >
-                              <span className="material-icons text-sm">description</span>
-                              DOCX #{src.page_num}
-                            </a>
-                          );
-                        } else if (src.type === 'audio') {
-                          return (
-                            <a
-                              key={idx}
-                              href="javascript:void(0)"
-                              onClick={() => handleSourceClick(src)}
-                              title={src.source_filename}
-                              className="px-2 py-1 bg-gray-200 rounded-md text-gray-600 text-xs no-underline hover:bg-gray-300 transition-colors flex items-center gap-1 cursor-pointer"
-                            >
-                              <span className="material-icons text-sm">audiotrack</span>
-                              {formatTime(src.start_time)} - {formatTime(src.end_time)}
-                            </a>
-                          );
-                        }
-                        return null;
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
+                )}
+              </div>
             </div>
           ))}
         </div>
 
         {audioPlayerVisible && (
-          <div id="audio-player-container" className="p-6 pt-0 relative">
-            <audio
-              id="audio-player"
-              ref={audioPlayerRef}
-              controls
-              className="w-full"
-              src={audioSrc}
-            />
-            <button
-              id="audio-close-button"
-              onClick={() => {
-                setAudioPlayerVisible(false);
-                if (audioPlayerRef.current) {
-                  audioPlayerRef.current.pause();
-                }
-              }}
-              className="absolute top-0 right-4 bg-gray-600 text-white rounded-full w-6 h-6 flex items-center justify-center font-bold text-lg hover:bg-gray-800 transition-colors"
-            >
-              &times;
+          <div className="p-8 pt-0 relative">
+            <audio ref={audioPlayerRef} controls className="w-full rounded-lg shadow-lg" src={audioSrc} />
+            <button onClick={() => { setAudioPlayerVisible(false); audioPlayerRef.current?.pause(); }} className="absolute -top-3 right-6 bg-red-500/80 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-red-600 transition-all duration-300 shadow-md">
+              <FiX size={18} />
             </button>
           </div>
         )}
 
-        <div className="p-6 pt-2">
+        <div className="p-8 pt-4 pb-12 bg-[#001523]/50 backdrop-blur-md">
           <div className="max-w-4xl mx-auto">
-            <div className="bg-surface-light dark:bg-surface-dark p-4 rounded-lg border border-border-light dark:border-border-dark">
-              <input
-                className="w-full bg-transparent border-0 focus:ring-0 text-text-light dark:text-text-dark placeholder-subtext-light dark:placeholder-subtext-dark mb-3 outline-none"
-                placeholder="Ask me anything..."
-                type="text"
+            <div className="relative">
+              <textarea
+                className="w-full bg-[#002137]/80 border border-[#002e4e] rounded-2xl text-cyan-100 placeholder-cyan-400/50 pl-28 pr-32 py-4 resize-none outline-none focus:ring-2 focus:ring-cyan-400 focus:border-cyan-400 transition-all duration-300 shadow-inner"
+                placeholder="Ask anything or describe what to find..."
                 value={questionInput}
                 onChange={(e) => setQuestionInput(e.target.value)}
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    askQuestion();
-                  }
-                }}
+                onKeyPress={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); askQuestion(); } }}
+                rows={1}
               />
-              <div className="flex items-center justify-between">
-                <div></div>
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="file"
-                    id="file-upload"
-                    ref={fileUploadInputRef}
-                    accept=".pdf,.docx,.mp3,.wav,.m4a"
-                    className="hidden"
-                    multiple
-                    onChange={handleFileUpload}
-                  />
-                  <button
-                    id="attach-button"
-                    onClick={() => fileUploadInputRef.current?.click()}
-                    className="flex items-center py-2 px-3 rounded-lg border border-border-light dark:border-border-dark"
-                  >
-                    <span className="material-icons text-sm mr-1">attach_file</span> Attach
-                  </button>
-                  <button
-                    id="voice-button"
-                    onClick={handleVoiceButton}
-                    className={`flex items-center py-2 px-3 rounded-lg border border-border-light dark:border-border-dark ${
-                      isRecording ? 'bg-red-500 text-white' : ''
-                    }`}
-                  >
-                    <span className="material-icons text-sm mr-1">
-                      {isRecording ? 'stop' : 'mic'}
-                    </span>
-                    {isRecording ? 'Stop' : 'Voice'}
-                  </button>
-                  <button
-                    id="send-button"
-                    onClick={askQuestion}
-                    className="bg-gray-800 dark:bg-gray-900 text-white py-2 px-3 rounded-lg flex items-center"
-                  >
-                    <span className="material-icons text-sm mr-1">send</span> Send
-                  </button>
-                </div>
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 flex items-center gap-3">
+                <input type="file" ref={fileUploadInputRef} accept=".pdf,.docx,.mp3,.wav,.m4a" className="hidden" multiple onChange={handleFileUpload} />
+                <button onClick={() => fileUploadInputRef.current?.click()} className="p-2 text-cyan-300/70 hover:text-cyan-300 transition-colors duration-300">
+                  <FiPaperclip size={22} />
+                </button>
+                <button onClick={handleVoiceButton} className={`p-2 transition-colors duration-300 ${isRecording ? 'text-red-400 animate-pulse' : 'text-cyan-300/70 hover:text-cyan-300'}`}>
+                  <FiMic size={22} />
+                </button>
+              </div>
+              <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                <button onClick={askQuestion} className="bg-gradient-to-r from-blue-500 to-cyan-400 text-white py-2.5 px-6 rounded-lg flex items-center gap-2 hover:from-blue-600 hover:to-cyan-500 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed shadow-md" disabled={!questionInput.trim()}>
+                  <span className="font-medium">Send</span>
+                  <FiSend size={18} />
+                </button>
               </div>
             </div>
           </div>
@@ -531,33 +345,15 @@ export default function ChatApp() {
       </main>
 
       {modalVisible && (
-        <div
-          id="docx-modal"
-          className="fixed inset-0 bg-white bg-opacity-60 flex items-center justify-center p-4 z-50"
-          onClick={(e) => {
-            if (e.target.id === 'docx-modal') {
-              setModalVisible(false);
-            }
-          }}
-        >
-          <div className="bg-surface-light dark:bg-surface-dark rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
-            <div className="flex justify-between items-center p-4 border-b border-border-light dark:border-border-dark">
-              <h2 id="modal-title" className="text-lg font-bold text-text-light dark:text-text-dark">
-                {modalTitle}
-              </h2>
-              <button
-                id="modal-close-button"
-                onClick={() => setModalVisible(false)}
-                className="text-subtext-light dark:text-subtext-dark hover:text-text-light dark:hover:text-text-dark text-3xl leading-none"
-              >
-                &times;
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md flex items-center justify-center p-6 z-50" onClick={() => setModalVisible(false)}>
+          <div className="bg-[#001a2c]/90 border border-[#002e4e]/50 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center p-5 border-b border-[#002e4e]/50 bg-[#002137]/50">
+              <h2 className="text-xl font-bold text-cyan-100">{modalTitle}</h2>
+              <button onClick={() => setModalVisible(false)} className="text-cyan-300/70 hover:text-cyan-300 transition-colors duration-300">
+                <FiX size={26} />
               </button>
             </div>
-            <div
-              id="modal-content"
-              className="prose dark:prose-invert p-4 overflow-y-auto"
-              dangerouslySetInnerHTML={{ __html: modalContent }}
-            />
+            <div className="prose prose-invert p-6 overflow-y-auto text-cyan-100" dangerouslySetInnerHTML={{ __html: modalContent }} />
           </div>
         </div>
       )}
