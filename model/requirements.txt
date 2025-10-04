@@ -1,0 +1,13 @@
+flask
+pymupdf
+faiss-cpu
+python-docx
+ollama
+sentence-transformers
+langchain
+langchain-ollama
+faster-whisper
+pytesseract
+pillow
+numpy
+transformers

@@ -1,0 +1,19 @@
+{
+  "name": "GitBash_RAGit",
+  "short_name": "GitBash_RAGit",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#242424",
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
+
+
