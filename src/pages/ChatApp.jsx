@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FiPaperclip, FiMic, FiSend, FiX, FiFile, FiMenu, FiChevronLeft } from 'react-icons/fi';
+import { FiPaperclip, FiMic, FiSend, FiX, FiFile, FiMenu, FiChevronLeft, FiEdit3, FiPlus } from 'react-icons/fi';
 import { FaFilePdf, FaFileWord, FaMusic } from "react-icons/fa";
 
 export default function ChatApp() {
@@ -13,6 +13,11 @@ export default function ChatApp() {
   const [modalTitle, setModalTitle] = useState('');
   const [modalContent, setModalContent] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [pastChats, setPastChats] = useState([
+    { id: 1, title: "Document Analysis Session", date: "Today" },
+    { id: 2, title: "PDF Summary Request", date: "Yesterday" },
+    { id: 3, title: "Audio Transcription Query", date: "Oct 3" }
+  ]);
   
   const fileUploadInputRef = useRef(null);
   const chatMessagesRef = useRef(null);
@@ -213,6 +218,11 @@ export default function ChatApp() {
     window.location.reload();
   };
 
+  const handleNewChat = () => {
+    setMessages([]);
+    setQuestionInput('');
+  };
+
   const getFileIcon = (filename) => {
     if (filename.endsWith('.pdf')) return <FaFilePdf className="text-red-400" />;
     if (filename.endsWith('.docx') || filename.endsWith('.doc')) return <FaFileWord className="text-blue-400" />;
@@ -221,68 +231,90 @@ export default function ChatApp() {
   };
 
   return (
-    <div className="flex h-screen bg-black text-white overflow-hidden">
+    <div className="flex h-screen bg-[#212121] text-white overflow-hidden">
       {/* Sidebar */}
       <div 
         className={`${sidebarOpen ? 'w-64' : 'w-0'} 
                     transition-all duration-300 ease-in-out
-                    bg-zinc-950 border-r border-zinc-800 flex flex-col overflow-hidden`}
+                    bg-[#171717] flex flex-col overflow-hidden`}
       >
-        {/* Sidebar Header */}
-        <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
-          <h2 className="text-lg font-semibold whitespace-nowrap">Uploaded Files</h2>
+        {/* Sidebar Header - New Chat Button */}
+        <div className="p-3 border-b border-zinc-800">
           <button
-            onClick={() => setSidebarOpen(false)}
-            className="p-2 hover:bg-zinc-800 rounded-lg transition-colors"
+            onClick={handleNewChat}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
+                       bg-transparent border border-zinc-700 hover:bg-zinc-800
+                       transition-colors text-sm font-medium"
           >
-            <FiChevronLeft className="w-5 h-5" />
+            <FiEdit3 className="w-4 h-4" />
+            <span>New chat</span>
           </button>
         </div>
 
-        {/* Files List */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
-          {uploadedFiles.length === 0 ? (
-            <p className="text-sm text-gray-500 text-center mt-8">No files uploaded yet</p>
-          ) : (
-            uploadedFiles.map((file, idx) => (
-              <div 
-                key={idx}
-                className="flex items-center justify-between p-3 bg-zinc-900 rounded-lg 
-                           border border-zinc-800 hover:border-zinc-700 transition-colors group"
-              >
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className="text-xl flex-shrink-0">{getFileIcon(file.name)}</div>
-                  <span className="text-sm truncate">{file.name}</span>
-                </div>
-                {!file.uploading && (
-                  <button
-                    onClick={() => handleRemoveFile(file.name)}
-                    className="p-1 hover:bg-zinc-800 rounded opacity-0 group-hover:opacity-100 
-                               transition-all flex-shrink-0"
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-4">
+          {/* Uploaded Files Section */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 mb-2 px-2">UPLOADED FILES</h3>
+            <div className="space-y-1">
+              {uploadedFiles.length === 0 ? (
+                <p className="text-xs text-gray-600 px-2 py-2">No files uploaded</p>
+              ) : (
+                uploadedFiles.map((file, idx) => (
+                  <div 
+                    key={idx}
+                    className="flex items-center justify-between px-2 py-2 rounded-lg
+                               hover:bg-zinc-800 transition-colors group"
                   >
-                    <FiX className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-            ))
-          )}
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <div className="text-base flex-shrink-0">{getFileIcon(file.name)}</div>
+                      <span className="text-sm truncate">{file.name}</span>
+                    </div>
+                    {!file.uploading && (
+                      <button
+                        onClick={() => handleRemoveFile(file.name)}
+                        className="p-1 hover:bg-zinc-700 rounded opacity-0 group-hover:opacity-100 
+                                   transition-all flex-shrink-0"
+                      >
+                        <FiX className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Past Chats Section */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 mb-2 px-2">PAST CHATS</h3>
+            <div className="space-y-1">
+              {pastChats.map((chat) => (
+                <button
+                  key={chat.id}
+                  className="w-full flex items-start gap-3 px-2 py-2 rounded-lg
+                             hover:bg-zinc-800 transition-colors text-left group"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm truncate text-gray-200 group-hover:text-white">
+                      {chat.title}
+                    </p>
+                    <p className="text-xs text-gray-500">{chat.date}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Sidebar Footer */}
-        <div className="p-4 border-t border-zinc-800 space-y-2">
-          <button
-            onClick={() => fileUploadInputRef.current?.click()}
-            className="w-full px-4 py-2 bg-white text-black rounded-lg font-medium
-                       hover:bg-gray-200 transition-colors"
-          >
-            Upload Files
-          </button>
+        <div className="p-3 border-t border-zinc-800 space-y-2">
           <button
             onClick={handleClearSession}
-            className="w-full px-4 py-2 bg-zinc-900 border border-zinc-800 rounded-lg
-                       hover:bg-zinc-800 transition-colors text-sm"
+            className="w-full px-3 py-2 rounded-lg text-sm
+                       hover:bg-zinc-800 transition-colors text-left"
           >
-            Clear Session
+            Clear session
           </button>
         </div>
       </div>
@@ -290,74 +322,86 @@ export default function ChatApp() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
         {/* Top Bar */}
-        <div className="h-16 border-b border-zinc-800 flex items-center px-6 gap-4">
+        <div className="h-14 border-b border-zinc-800 flex items-center px-4 gap-3">
           {!sidebarOpen && (
             <button
               onClick={() => setSidebarOpen(true)}
-              className="p-2 hover:bg-zinc-900 rounded-lg transition-colors"
+              className="p-2 hover:bg-zinc-800 rounded-lg transition-colors"
             >
-              <FiMenu className="w-6 h-6" />
+              <FiMenu className="w-5 h-5" />
             </button>
           )}
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center">
-              <svg viewBox="0 0 24 24" className="w-5 h-5" fill="black">
-                <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z" />
-              </svg>
-            </div>
-            <h1 className="text-xl font-bold">GitBash RAGit</h1>
+          {sidebarOpen && (
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="p-2 hover:bg-zinc-800 rounded-lg transition-colors"
+            >
+              <FiChevronLeft className="w-5 h-5" />
+            </button>
+          )}
+          <div className="flex items-center gap-2">
+            <span className="text-lg font-semibold">GitBash RAGit</span>
           </div>
         </div>
 
         {/* Chat Messages */}
         <div 
           ref={chatMessagesRef}
-          className="flex-1 overflow-y-auto px-6 py-8 space-y-6"
+          className="flex-1 overflow-y-auto"
         >
           {messages.length === 0 ? (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center max-w-md">
-                <h2 className="text-2xl font-bold mb-4">What do you want to know?</h2>
+            <div className="flex items-center justify-center h-full px-6">
+              <div className="text-center max-w-2xl">
+                <div className="mb-6 flex items-center justify-center">
+                  <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center">
+                    <svg viewBox="0 0 24 24" className="w-10 h-10" fill="black">
+                      <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z" />
+                    </svg>
+                  </div>
+                </div>
+                <h2 className="text-3xl font-normal mb-4 text-gray-100">What can I help with?</h2>
                 <p className="text-gray-400">Upload documents and start asking questions</p>
               </div>
             </div>
           ) : (
-            messages.map((msg, idx) => (
-              <div 
-                key={idx}
-                className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
+            <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
+              {messages.map((msg, idx) => (
                 <div 
-                  className={`max-w-3xl px-6 py-4 rounded-2xl ${
-                    msg.sender === 'user' 
-                      ? 'bg-white text-black ml-12' 
-                      : 'bg-zinc-900 border border-zinc-800 mr-12'
-                  }`}
+                  key={idx}
+                  className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
-                  <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
-                  {msg.sources && msg.sources.length > 0 && (
-                    <div className="mt-4 pt-4 border-t border-zinc-800">
-                      <p className="text-xs text-gray-500 mb-2">Sources:</p>
-                      <div className="space-y-1">
-                        {msg.sources.map((source, i) => (
-                          <p key={i} className="text-xs text-gray-400">{source}</p>
-                        ))}
+                  <div 
+                    className={`max-w-[85%] ${
+                      msg.sender === 'user' 
+                        ? 'bg-[#2f2f2f] px-4 py-3 rounded-3xl' 
+                        : ''
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap leading-relaxed text-[15px]">{msg.content}</p>
+                    {msg.sources && msg.sources.length > 0 && (
+                      <div className="mt-4 pt-4 border-t border-zinc-800">
+                        <p className="text-xs text-gray-500 mb-2">Sources:</p>
+                        <div className="space-y-1">
+                          {msg.sources.map((source, i) => (
+                            <p key={i} className="text-xs text-gray-400">{source}</p>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))
+              ))}
+            </div>
           )}
         </div>
 
         {/* Input Area */}
-        <div className="border-t border-zinc-800 p-6">
-          <div className="max-w-4xl mx-auto">
-            <div className="flex items-end gap-3 bg-zinc-900 border border-zinc-800 rounded-2xl p-2">
+        <div className="p-4 pb-6">
+          <div className="max-w-3xl mx-auto">
+            <div className="flex items-end gap-2 bg-[#2f2f2f] rounded-3xl px-4 py-2 shadow-lg">
               <button
                 onClick={() => fileUploadInputRef.current?.click()}
-                className="p-3 hover:bg-zinc-800 rounded-xl transition-colors flex-shrink-0"
+                className="p-2 hover:bg-zinc-700 rounded-lg transition-colors flex-shrink-0"
               >
                 <FiPaperclip className="w-5 h-5" />
               </button>
@@ -371,18 +415,19 @@ export default function ChatApp() {
                     askQuestion();
                   }
                 }}
-                placeholder="Ask anything..."
+                placeholder="Message GitBash RAGit"
                 className="flex-1 bg-transparent border-none outline-none resize-none 
-                           text-white placeholder-gray-500 py-3 px-2 max-h-32"
+                           text-white placeholder-gray-500 py-3 px-2 max-h-32 text-[15px]"
                 rows="1"
+                style={{ minHeight: '24px' }}
               />
 
               <button
                 onClick={handleVoiceButton}
-                className={`p-3 rounded-xl transition-colors flex-shrink-0 ${
+                className={`p-2 rounded-lg transition-colors flex-shrink-0 ${
                   isRecording 
                     ? 'bg-red-500 hover:bg-red-600' 
-                    : 'hover:bg-zinc-800'
+                    : 'hover:bg-zinc-700'
                 }`}
               >
                 <FiMic className="w-5 h-5" />
@@ -391,13 +436,16 @@ export default function ChatApp() {
               <button
                 onClick={askQuestion}
                 disabled={!questionInput.trim()}
-                className="p-3 bg-white text-black rounded-xl hover:bg-gray-200 
-                           disabled:opacity-50 disabled:cursor-not-allowed 
+                className="p-2 bg-white text-black rounded-lg hover:bg-gray-200 
+                           disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-white
                            transition-colors flex-shrink-0"
               >
                 <FiSend className="w-5 h-5" />
               </button>
             </div>
+            <p className="text-center text-xs text-gray-500 mt-3">
+              GitBash RAGit can make mistakes. Check important info.
+            </p>
           </div>
         </div>
       </div>
@@ -412,15 +460,15 @@ export default function ChatApp() {
         className="hidden"
       />
 
-      {/* Modal (keeping your existing modal code) */}
+      {/* Modal */}
       {modalVisible && (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
+          <div className="bg-[#2f2f2f] rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
             <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
               <h3 className="text-xl font-semibold">{modalTitle}</h3>
               <button
                 onClick={() => setModalVisible(false)}
-                className="p-2 hover:bg-zinc-800 rounded-lg transition-colors"
+                className="p-2 hover:bg-zinc-700 rounded-lg transition-colors"
               >
                 <FiX className="w-5 h-5" />
               </button>
