@@ -24,7 +24,7 @@ export default function HomePage() {
       <nav className="w-full px-8 py-4 flex items-center justify-between border-b border-zinc-800">
         <div className="flex items-center gap-3">
           <UnityLogo size={32} className="text-white" />
-          <span className="text-xl font-semibold">GitBash RAGit</span>
+          <span className="text-xl font-semibold">VaultAI</span>
         </div>
 
         <div className="flex items-center gap-6">
@@ -40,7 +40,7 @@ export default function HomePage() {
             className="px-5 py-2 bg-white text-black font-medium rounded-full text-sm
                        hover:bg-gray-200 transition-all duration-200"
           >
-            Try GitBash RAGit
+            Try VaultAI
           </button>
         </div>
       </nav>
@@ -49,7 +49,7 @@ export default function HomePage() {
       <div className="flex-1 flex flex-col items-center justify-center px-6 py-12">
         {/* Small Label */}
         <div className="mb-6">
-          <span className="text-sm text-gray-400">GitBash RAGit</span>
+          <span className="text-sm text-gray-400">VaultAI</span>
         </div>
 
         {/* Main Heading */}
@@ -118,7 +118,7 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="w-full px-8 py-6 border-t border-zinc-800">
         <div className="max-w-7xl mx-auto flex items-center justify-between text-sm text-gray-500">
-          <p>© 2025 GitBash RAGit. All rights reserved.</p>
+          <p>© 2025 VaultAI. All rights reserved.</p>
           <div className="flex items-center gap-6">
             <a href="#privacy" className="hover:text-gray-300 transition-colors">Privacy</a>
             <a href="#terms" className="hover:text-gray-300 transition-colors">Terms</a>

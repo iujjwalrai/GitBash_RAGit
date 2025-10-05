@@ -342,7 +342,7 @@ export default function ChatApp() {
           )}
           <div className="flex items-center gap-2">
             <UnityLogo size={24} className="text-white" />
-            <span className="text-lg font-semibold">GitBash RAGit</span>
+            <span className="text-lg font-semibold">VaultAI</span>
           </div>
         </div>
 
@@ -413,7 +413,7 @@ export default function ChatApp() {
                     askQuestion();
                   }
                 }}
-                placeholder="Message GitBash RAGit"
+                placeholder="Message VaultAI"
                 className="flex-1 bg-transparent border-none outline-none resize-none 
                            text-white placeholder-gray-500 py-3 px-2 max-h-32 text-[15px]"
                 rows="1"
@@ -442,7 +442,7 @@ export default function ChatApp() {
               </button>
             </div>
             <p className="text-center text-xs text-gray-500 mt-3">
-              GitBash RAGit can make mistakes. Check important info.
+              VaultAI can make mistakes. Check important info.
             </p>
           </div>
         </div>
