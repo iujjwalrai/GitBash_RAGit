@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FiPaperclip, FiMic, FiSend, FiX, FiFile, FiMenu, FiChevronLeft, FiEdit3, FiPlus } from 'react-icons/fi';
+import { FiPaperclip, FiMic, FiSend, FiX, FiFile, FiMenu, FiChevronLeft, FiEdit3 } from 'react-icons/fi';
 import { FaFilePdf, FaFileWord, FaMusic } from "react-icons/fa";
+import UnityLogo from './UnityLogo';
 
 export default function ChatApp() {
   const [uploadedFiles, setUploadedFiles] = useState([]);
@@ -340,6 +341,7 @@ export default function ChatApp() {
             </button>
           )}
           <div className="flex items-center gap-2">
+            <UnityLogo size={24} className="text-white" />
             <span className="text-lg font-semibold">GitBash RAGit</span>
           </div>
         </div>
@@ -353,11 +355,7 @@ export default function ChatApp() {
             <div className="flex items-center justify-center h-full px-6">
               <div className="text-center max-w-2xl">
                 <div className="mb-6 flex items-center justify-center">
-                  <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center">
-                    <svg viewBox="0 0 24 24" className="w-10 h-10" fill="black">
-                      <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z" />
-                    </svg>
-                  </div>
+                  <UnityLogo size={64} className="text-white" />
                 </div>
                 <h2 className="text-3xl font-normal mb-4 text-gray-100">What can I help with?</h2>
                 <p className="text-gray-400">Upload documents and start asking questions</p>
